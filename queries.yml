@@ -1,0 +1,33 @@
+pg_stat_statements:
+    query:
+        "SELECT s.queryid, s.query, s.calls, s.total_exec_time, s.rows, s.shared_blks_hit, s.shared_blks_read, d.datname
+    FROM pg_stat_statements s
+    JOIN pg_database d ON s.dbid = d.oid
+    WHERE s.calls > 0
+    AND d.datname = 'wow_db'
+    AND s.query LIKE '%app=query_simulator%'"
+    metrics:
+        - datname:
+              usage: LABEL
+              description: Database name
+        - queryid:
+              usage: LABEL
+              description: Unique identifier of the query
+        - query:
+              usage: LABEL
+              description: Query text
+        - calls:
+              usage: COUNTER
+              description: Number of times the query was executed
+        - total_exec_time:
+              usage: GAUGE
+              description: Total execution time of the query in milliseconds
+        - rows:
+              usage: GAUGE
+              description: Total number of rows retrieved or affected
+        - shared_blks_hit:
+              usage: GAUGE
+              description: Cache hits for shared blocks
+        - shared_blks_read:
+              usage: GAUGE
+              description: Cache reads for shared blocks

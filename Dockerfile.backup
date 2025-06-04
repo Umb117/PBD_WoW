@@ -1,0 +1,12 @@
+FROM alpine:latest
+
+RUN apk add --no-cache postgresql-client busybox-suid
+
+COPY backup.sh /usr/local/bin/backup.sh
+RUN chmod +x /usr/local/bin/backup.sh
+
+# COPY cron config
+ENV BACKUP_INTERVAL_CRON="*/5 * * * *"
+RUN echo "$BACKUP_INTERVAL_CRON /usr/local/bin/backup.sh >> /var/log/cron.log 2>&1" > /etc/crontabs/root
+
+CMD crond && tail -f /var/log/cron.log

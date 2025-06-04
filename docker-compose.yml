@@ -1,0 +1,182 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: wow_postgres
+    environment:
+      POSTGRES_USER: migrator_user
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: wow_db
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.track=all"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U migrator_user -d wow_db"]
+      interval: 8s
+      timeout: 5s
+      retries: 5
+
+  flyway:
+    image: flyway/flyway:11.8.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/wow_db
+      FLYWAY_USER: migrator_user
+      FLYWAY_PASSWORD: admin123
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_TARGET: ${MIGRATION_VERSION:-latest}
+      FLYWAY_VALIDATE_ON_MIGRATE: "false"
+    volumes:
+      - ./migrations:/flyway/sql
+    command:
+      - -url=jdbc:postgresql://postgres:5432/wow_db
+      - -user=migrator_user
+      - -password=admin123
+      - -connectRetries=60
+      - migrate
+    healthcheck:
+      test: [ "CMD-SHELL", "flyway info -url=$$FLYWAY_URL -user=$$FLYWAY_USER -password=$$FLYWAY_PASSWORD | grep '^| Version | Description |']" ]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  seed:
+    image: python:3.12
+    depends_on:
+      postgres:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: wow_db
+      POSTGRES_USER: migrator_user
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      APP_ENV: ${APP_ENV:-dev}
+      SEED_COUNT: ${SEED_COUNT:-10}
+      ANALYST_NAMES: ${ANALYST_NAMES:-}
+      SEED_VERSION: ${SEED_VERSION:-all}
+    volumes:
+        - ./seeds:/app/seeds
+        - ./seed.py:/app/seed.py
+        - ./requirements.txt:/app/requirements.txt
+    working_dir: /app
+    command: >
+        sh -c "pip install -r requirements.txt &&
+        python seed.py"
+    healthcheck:
+      test: [ "CMD-SHELL", "ps aux | grep 'python seed.py' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://migrator_user:admin123@postgres:5432/wow_db?sslmode=disable"
+      PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres-exporter/queries.yml"
+    volumes:
+      - ./queries.yml:/etc/postgres-exporter/queries.yml
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    depends_on:
+      - postgres-exporter
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+        - prometheus
+
+  query-simulator:
+    image: python:3.12
+    depends_on:
+      postgres:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: wow_db
+      POSTGRES_USER: migrator_user
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      QUERY_INTERVAL: ${QUERY_INTERVAL:-0.5}
+    volumes:
+      - ./query_simulator:/app/query_simulator
+      - ./query_simulator.py:/app/query_simulator.py
+      - ./requirements.txt:/app/requirements.txt
+    working_dir: /app
+    command: >
+      sh -c "pip install -r requirements.txt &&
+      python query_simulator.py"
+
+  db-backup:
+    build:
+      context: ./backup
+      dockerfile: Dockerfile.backup
+    container_name: db_backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: migrator_user
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: wow_db
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      BACKUP_RETENTION_COUNT: ${BACKUP_RETENTION_COUNT:-5}
+    volumes:
+      - ./db_backups:/backups
+      - ./backup/backup.sh:/usr/local/bin/backup.sh
+    cap_add:
+      - SYS_NICE
+    command: >
+      sh -c "chmod +x /usr/local/bin/backup.sh &&
+      echo '${BACKUP_INTERVAL_CRON} /usr/local/bin/backup.sh >> /var/log/cron.log 2>&1' > /etc/crontabs/root &&
+      cat /etc/crontabs/root &&
+      crond &&
+      tail -f /var/log/cron.log"
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+  db_backups:
