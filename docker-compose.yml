@@ -26,14 +26,14 @@ services:
 
   haproxy:
       image: ${PATRONI_TEST_IMAGE:-patroni}
-      env_file: docker/patroni.env
+      env_file: patroni.env
       hostname: haproxy
       container_name: demo-haproxy
       ports:
         - "5000:5000"
         - "5001:5001"
       volumes:
-        - ./haproxy.cfg:/etc/haproxy.cfg
+        - ./haproxy.cfg:/etc/haproxy/haproxy.cfg
       command: haproxy -f /etc/haproxy/haproxy.cfg
       environment: &haproxy_env
         ETCDCTL_ENDPOINTS: http://etcd1:2379,http://etcd2:2379,http://etcd3:2379
@@ -47,33 +47,53 @@ services:
 
   patroni1:
       image: ${PATRONI_TEST_IMAGE:-patroni}
-      env_file: docker/patroni.env
+      env_file: patroni.env
       hostname: patroni1
       container_name: demo-patroni1
       environment:
           <<: *haproxy_env
           PATRONI_NAME: patroni1
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+        start_period: 15s
 
   patroni2:
       image: ${PATRONI_TEST_IMAGE:-patroni}
-      env_file: docker/patroni.env
+      env_file: patroni.env
       hostname: patroni2
       container_name: demo-patroni2
       environment:
           <<: *haproxy_env
           PATRONI_NAME: patroni2
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+        start_period: 15s
 
   patroni3:
-        image: ${PATRONI_TEST_IMAGE:-patroni}
-        env_file: docker/patroni.env
-        hostname: patroni3
-        container_name: demo-patroni3
-        environment:
-            <<: *haproxy_env
-            PATRONI_NAME: patroni3
+      image: ${PATRONI_TEST_IMAGE:-patroni}
+      env_file: patroni.env
+      hostname: patroni3
+      container_name: demo-patroni3
+      environment:
+          <<: *haproxy_env
+          PATRONI_NAME: patroni3
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+        start_period: 15s
+
 
   flyway:
     image: flyway/flyway:11.8.1
+    container_name: flyway
     depends_on:
       haproxy:
         condition: service_healthy
@@ -100,17 +120,18 @@ services:
 
   seed:
     image: python:3.12
+    container_name: seed
     depends_on:
       haproxy:
         condition: service_healthy
       flyway:
         condition: service_completed_successfully
     environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_HOST: haproxy
-      POSTGRES_PORT: 5000
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
       APP_ENV: ${APP_ENV:-dev}
       SEED_COUNT: ${SEED_COUNT:-10}
       ANALYST_NAMES: ${ANALYST_NAMES:-}
@@ -128,19 +149,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-  postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
-    container_name: postgres-exporter
-    environment:
-      DATA_SOURCE_NAME: "postgresql://migrator_user:admin123@postgres:5432/wow_db?sslmode=disable"
-      PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres-exporter/queries.yml"
-    volumes:
-      - ./queries.yml:/etc/postgres-exporter/queries.yml
-    ports:
-      - "9187:9187"
-    depends_on:
-      haproxy:
-        condition: service_healthy
 
   prometheus:
     image: prom/prometheus:latest
@@ -158,6 +166,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
+    container_name: grafana
     ports:
       - "3000:3000"
     environment:
@@ -172,6 +181,7 @@ services:
 
   query-simulator:
     image: python:3.12
+    container_name: query_simulator
     depends_on:
       haproxy:
         condition:
@@ -181,11 +191,11 @@ services:
       seed:
         condition: service_completed_successfully
     environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_HOST: haproxy
-      POSTGRES_PORT: 5000
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
       QUERY_INTERVAL: ${QUERY_INTERVAL:-0.5}
     volumes:
       - ./query_simulator:/app/query_simulator
@@ -210,11 +220,11 @@ services:
       seed:
         condition: service_completed_successfully
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
-      POSTGRES_HOST: haproxy
-      POSTGRES_PORT: 5000
+      DB_NAME: ${DB_NAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_USER: ${DB_USER}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
       BACKUP_RETENTION_COUNT: ${BACKUP_RETENTION_COUNT:-5}
     volumes:
       - ./db_backups:/backups
@@ -227,3 +237,9 @@ services:
       cat /etc/crontabs/root &&
       crond &&
       tail -f /var/log/cron.log"
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+  db_backups:
