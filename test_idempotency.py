@@ -5,11 +5,11 @@ import tempfile
 import sys
 import re
 
-DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
-DB_PORT = os.getenv("POSTGRES_PORT", "5432")
-DB_NAME = os.getenv("POSTGRES_DB", "wow_db")
-DB_USER = os.getenv("POSTGRES_USER", "migrator_user")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "admin123")
+DB_HOST = "localhost"
+DB_PORT = "5432"
+DB_NAME = "wow_db"
+DB_USER = "migrator_user"
+DB_PASSWORD = "admin123"
 
 def collect_migration_pairs(migrations_path="./migrations"):
     files = os.listdir(migrations_path)

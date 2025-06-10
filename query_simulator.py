@@ -2,7 +2,6 @@ import os
 import time
 import psycopg2
 import logging
-from psycopg2 import sql
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -43,11 +42,11 @@ def load_queries(file_path):
 
 def connect_db():
     return psycopg2.connect(
-        dbname=os.getenv("POSTGRES_DB") ,
-        user=os.getenv("POSTGRES_USER") ,
-        password=os.getenv("POSTGRES_PASSWORD") ,
-        host=os.getenv("POSTGRES_HOST") ,
-        port=os.getenv("POSTGRES_PORT")
+        dbname=os.getenv("DB_NAME") ,
+        user=os.getenv("DB_USER") ,
+        password=os.getenv("DB_PASSWORD") ,
+        host=os.getenv("DB_HOST") ,
+        port=os.getenv("DB_PORT")
     )
 
 def apply_indexes(conn, indexes_file="/app/query_simulator/add_indexes.sql"):

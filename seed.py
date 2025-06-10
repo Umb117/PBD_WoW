@@ -4,12 +4,13 @@ import psycopg2
 
 
 def create_analytics_db():
+    print(os.getenv('DB_PORT'))
     conn = psycopg2.connect(
-        dbname=os.getenv('POSTGRES_DB') ,
-        user=os.getenv('POSTGRES_USER') ,
-        password=os.getenv('POSTGRES_PASSWORD') ,
-        host=os.getenv('POSTGRES_HOST') ,
-        port=os.getenv('POSTGRES_PORT')
+        dbname=os.getenv('DB_NAME') ,
+        user=os.getenv('DB_USER') ,
+        password=os.getenv('DB_PASSWORD') ,
+        host=os.getenv('DB_HOST') ,
+        port=os.getenv('DB_PORT')
     )
     cur = conn.cursor()
 
@@ -50,10 +51,11 @@ def create_analytics_db():
 
 def seed_all():
     conn = psycopg2.connect(
-        dbname=os.getenv("POSTGRES_DB") ,
-        user=os.getenv("POSTGRES_USER") ,
-        password=os.getenv("POSTGRES_PASSWORD") ,
-        host=os.getenv("POSTGRES_HOST")
+        dbname=os.getenv("DB_NAME") ,
+        user=os.getenv("DB_USER") ,
+        password=os.getenv("DB_PASSWORD") ,
+        host=os.getenv("DB_HOST") ,
+        port=os.getenv("DB_PORT")
     )
 
     try:
